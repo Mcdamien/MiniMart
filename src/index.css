@@ -1,0 +1,79 @@
+body {
+  margin: 0;
+  background: linear-gradient(135deg, #1cb5e0 0%, #000851 100%);
+  min-height: 100vh;
+  color: white;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+}
+
+/* The Glass Utility Class */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border-radius: 16px;
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 10px;
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 5px;
+}
+.glass-input::placeholder { color: rgba(255,255,255,0.5); }
+
+.glass-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+.glass-btn:hover { background: rgba(255, 255, 255, 0.4); }
+
+/* Scrollbar styling for the inner glass panels */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
+
+/* PRINT STYLES */
+@media print {
+  /* Hide everything in the body */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Only show the receipt container */
+  .receipt-printable, .receipt-printable * {
+    visibility: visible;
+  }
+  
+  /* Position the receipt on the top left */
+  .receipt-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 20px !important;
+    margin: 0 !important;
+  }
+
+  /* Hide the payment buttons so they don't print */
+  .payment-actions {
+    display: none !important;
+  }
+}
