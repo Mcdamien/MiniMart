@@ -1,591 +1,342 @@
-import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../utils';
+import { useState, useEffect } from 'react';
+import { formatCurrency, formatDateTime, formatTime, formatDate } from '../utils';
 
-export default function Dashboard() {
-  const [period, setPeriod] = useState('daily');
-  
+export default function Dashboard({ theme, showToast }) {
   const [stats, setStats] = useState({ total_sales: 0, total_orders: 0 });
-  const [recentSales, setRecentSales] = useState([]);
-  
-  const [batches, setBatches] = useState([]);
-  const [selectedBatch, setSelectedBatch] = useState(null);
-  const [batchItems, setBatchItems] = useState([]);
-
-  const [lowStockData, setLowStockData] = useState([]);
-  const [showStockModal, setShowStockModal] = useState(false);
-
-  const [selectedSale, setSelectedSale] = useState(null);
-  const [saleItems, setSaleItems] = useState([]);
-
+  const [period, setPeriod] = useState('daily');
+  const [lowStock, setLowStock] = useState([]);
   const [bestSeller, setBestSeller] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [viewTransaction, setViewTransaction] = useState(null); 
+  const [viewItems, setViewItems] = useState([]); 
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchItems, setBatchItems] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [showLowStockModal, setShowLowStockModal] = useState(false);
+  const [companyDetails, setCompanyDetails] = useState({
+    name: 'YAMES MINIMART',
+    address: '123 Main Street, Accra',
+    location: 'Opposite Main Market',
+    phone: '020 123 4567',
+    footer: 'THANK YOU FOR SHOPPING WITH US!!'
+  });
 
-  useEffect(() => {
-    fetch('http://localhost:5000/api/dashboard/stats/' + period)
+  const fetchStats = () => {
+    fetch(`http://localhost:5000/api/dashboard/stats/${period}`)
       .then(res => res.json())
-      .then(data => setStats(data));
-  }, [period]); 
+      .then(setStats)
+      .catch(console.error);
+  };
 
-  useEffect(() => {
-    fetch('http://localhost:5000/api/dashboard/recent-sales')
-      .then(res => res.json())
-      .then(data => setRecentSales(data));
-  }, []);
-
-  useEffect(() => {
-    fetch('http://localhost:5000/api/dashboard/best-seller')
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          setBestSeller({
-            name: data.name,
-            total_sales: parseFloat(data.total_sales),
-            total_revenue: parseFloat(data.total_revenue)
-          });
-        } else {
-          setBestSeller(null);
-        }
-      });
-  }, []);
-
-  useEffect(() => {
-    fetch('http://localhost:5000/api/dashboard/batches')
-      .then(res => res.json())
-      .then(data => setBatches(data));
-  }, []);
-
-  useEffect(() => {
+  const fetchDetails = () => {
     fetch('http://localhost:5000/api/dashboard/low-stock')
       .then(res => res.json())
-      .then(data => setLowStockData(data));
-  }, []);
-
-  const handleViewReceipt = (sale) => {
-    setSelectedSale(sale);
-    fetch(`http://localhost:5000/api/sales/${sale.id}/items`)
+      .then(setLowStock);
+    fetch('http://localhost:5000/api/dashboard/best-seller')
       .then(res => res.json())
-      .then(data => setSaleItems(data));
+      .then(setBestSeller);
   };
 
-  const handleViewBatch = (batch) => {
-    setSelectedBatch(batch);
-    fetch('http://localhost:5000/api/dashboard/batch-items/' + batch.inventory_id)
+  const fetchBatches = () => {
+    fetch('http://localhost:5000/api/batches')
       .then(res => res.json())
-      .then(data => setBatchItems(data));
+      .then(setBatches)
+      .catch(console.error);
   };
 
-  const handleReprint = () => {
-    window.print();
+  const fetchTransactions = () => {
+    fetch('http://localhost:5000/api/sales/all')
+      .then(res => res.json())
+      .then(data => {
+        setTransactions(data);
+      })
+      .catch(err => console.error("Failed to fetch transactions:", err));
   };
 
-  const outOfStock = lowStockData.filter(item => item.quantity === 0);
-  const lowStock = lowStockData.filter(item => item.quantity > 0 && item.quantity < 11);
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('minimart_settings');
+    if (savedSettings) setCompanyDetails(JSON.parse(savedSettings));
+    fetchStats(); 
+    fetchDetails(); 
+    fetchTransactions(); 
+    fetchBatches();
+  }, [period]);
 
-  const periodLabel = period.charAt(0).toUpperCase() + period.slice(1);
+  const handleViewBatch = (batchId) => {
+    setSelectedBatchId(batchId);
+    fetch(`http://localhost:5000/api/batch-items/${batchId}`)
+      .then(res => res.json())
+      .then(data => {
+        setBatchItems(data);
+        setShowBatchModal(true);
+      })
+      .catch(err => {
+        console.error("Fetch error:", err);
+        showToast("Error loading batch items");
+      });
+  };
+
+  const handleViewTransaction = async (sale) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/sales/${sale.id}/items`);
+      const items = await res.json();
+      setViewTransaction(sale);
+      setViewItems(items);
+    } catch (err) {
+      console.error("Failed to fetch transaction details", err);
+      showToast("Could not load transaction details.");
+    }
+  };
+
+  const closeViewModal = () => {
+    setViewTransaction(null);
+    setViewItems([]);
+  };
+
+  const handlePrint = () => window.print();
+
+  // Theme Color Helper
+  const textColor = 'var(--text-color)';
+  const labelColor = 'var(--text-color)';
+  const buttonTextColor = 'var(--text-color)';
 
   return (
-    <div style={{ 
-      height: '100vh', 
-      padding: '10px', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      gap: '10px',
-      boxSizing: 'border-box',
-      width: '100%' // Ensure full width
-    }}>
-      
-      {/* CARD 1: HEADER (Stretched Full Width) */}
-      <div className="glass-panel" style={{ 
-        width: '100%', // STRETCH FULL WIDTH
-        flexShrink: 0, 
-        padding: '10px', 
-        marginTop: '-20px', // Moved the card up by 20px
-        marginLeft: '-10px', // Moved closer to the sidebar by 10px
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: '5px'
-      }}>
-        
-        {/* Top Row: Title and Dropdown */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{margin:0, fontSize:'28px'}}>Dashboard</h1>
-          
-          <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-            <span style={{fontSize:'14px', opacity:0.8}}>Summary:</span>
-            <select 
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.3)',
-                background: 'rgba(247, 246, 246, 0.1)',
-                color: 'white',
-                fontSize: '16px',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="daily" style={{color:'black'}}>Daily</option>
-              <option value="monthly" style={{color:'black'}}>Monthly</option>
-              <option value="yearly" style={{color:'black'}}>Yearly</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Metrics Row */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '20px',
-          height: '120px' 
-        }}>
-          
-          <div style={{ 
-            flex: 1, 
-            padding: 0, 
-            background: 'rgba(96, 165, 250, 0.2)', 
-            borderRadius: '16px', 
-            border: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}>
-            <h3 style={{margin: '0 0 5px 0', fontSize: '20px', opacity: 0.8}}>{periodLabel} Sales</h3>
-            <p style={{ fontSize: '20px', color: '#ebebeb', margin: 0, fontWeight:'bold', textAlign:'center' }}>
-              {formatCurrency(stats.total_sales || 0)}
-            </p>
-          </div>
-
-          <div style={{ 
-            flex: 1, 
-            padding: 0, 
-            background: 'rgba(192, 132, 252, 0.2)', 
-            borderRadius: '16px', 
-            border: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}>
-            <h3 style={{margin: '0 0 5px 0', fontSize: '20px', opacity: 0.8}}>{periodLabel} Transaction Count</h3>
-            <p style={{ fontSize: '24px', color: '#ff7b00', margin: 0, fontWeight:'bold' }}>
-              {stats.total_orders || 0}
-            </p>
-          </div>
-
-          <div style={{ 
-            flex: 1, 
-            padding: 0, 
-            background: 'rgba(239, 68, 68, 0.1)', 
-            borderRadius: '16px', 
-            border: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            textAlign: 'center'
-          }}>
-            <h3 style={{color: '#fca5a5', margin: '0 0 5px 0', fontSize: '20px'}}>Stock Alerts</h3>
-            <div style={{ fontSize: '15px', lineHeight: '1.2', marginBottom: '5px' }}>
-              {outOfStock.length > 0 && <div style={{color: '#fca5a5'}}>Alert: {outOfStock.length} Out</div>}
-              {lowStock.length > 0 && <div style={{color: '#fbbf24'}}>Alert: {lowStock.length} Low</div>}
-              {(outOfStock.length === 0 && lowStock.length === 0) && <div style={{color: '#4ade80'}}>All Healthy</div>}
-            </div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: '20px', overflow: 'hidden' }}>
+      <div className="glass-panel" style={{ padding: '20px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+          <h2 style={{ margin: 0, color: textColor, fontSize: '24px', fontWeight: 'bold' }}>Dashboard Overview</h2>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {['daily', 'monthly', 'yearly'].map(p => (
+              <button 
+                key={p} 
+                className="glass-btn" 
+                onClick={() => setPeriod(p)} 
+                style={{ 
+                  textTransform: 'capitalize', 
+                  color: buttonTextColor,
+                  background: period === p ? 'var(--glass-btn-hover-bg)' : 'var(--glass-btn-bg)'
+                }}
+              >
+                {p}
+              </button>
+            ))}
             <button 
-              onClick={() => setShowStockModal(true)}
+              className="glass-btn"
+              onClick={() => setShowLowStockModal(true)}
+              disabled={lowStock.length === 0}
               style={{
-                background: 'rgba(255,255,255,0.2)', 
-                border: 'none', 
-                color: 'white', 
-                padding: '4px 8px', 
-                borderRadius: '4px', 
-                cursor: 'pointer', 
-                fontSize: '10px', 
-                width: '80%'
+                textTransform: 'uppercase',
+                fontWeight: 'bold',
+                background: lowStock.length === 0 ? 'var(--success-bg)' : 'var(--warning-bg)',
+                color: lowStock.length === 0 ? 'var(--success)' : 'var(--warning)',
+                borderColor: lowStock.length === 0 ? 'var(--success)' : 'var(--warning)',
+                cursor: lowStock.length === 0 ? 'default' : 'pointer',
+                opacity: lowStock.length === 0 ? 0.8 : 1
               }}
             >
-              View Details
+              {lowStock.length === 0 ? '✅ Stock OK' : '⚠️ Low Stock'}
             </button>
           </div>
-
-          <div style={{ 
-            flex: 1, 
-            padding: 0, 
-            background: 'rgba(16, 185, 129, 0.1)', 
-            borderRadius: '16px', 
-            border: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            textAlign: 'center'
-          }}>
-            <h3 style={{color: '#6ee7b7', margin: '0 0 5px 0', fontSize: '20px'}}>Best Selling</h3>
-            <p style={{ fontSize: '20px', margin: 0, fontWeight: 'bold', opacity: 0.9 }}>
-              {bestSeller && bestSeller.name 
-                ? bestSeller.name 
-                : "No best-selling item available"}
-            </p>
-            <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '2px' }}>
-              Sales: <span style={{fontWeight: 'bold', color: '#6ee7b7'}}>
-                {bestSeller && bestSeller.total_sales 
-                  ? formatCurrency(bestSeller.total_sales) 
-                  : "N/A"}
-              </span>
-              {' | '}
-              Revenue: <span style={{fontWeight: 'bold', color: '#6ee7b7'}}>
-                {bestSeller && bestSeller.total_revenue 
-                  ? formatCurrency(bestSeller.total_revenue) 
-                  : "N/A"}
-              </span>
+        </div>
+        {lowStock.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '10px', background: 'var(--warning-bg)', borderRadius: '8px', overflowX: 'auto', border: '1px solid var(--warning)' }}>
+            <span style={{ fontWeight: 'bold', color: 'var(--warning)', whiteSpace: 'nowrap' }}>⚠️ Low Stock:</span>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {lowStock.map(p => (
+                <div key={p.name} style={{ background: 'var(--glass-btn-bg)', padding: '4px 12px', borderRadius: '20px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                  {p.name}: <span style={{ fontWeight: 'bold', color: 'var(--warning)' }}>{p.quantity}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-
+        )}
       </div>
 
-      {/* CARD 2: SCROLLABLE CONTAINER (Stretched Full Width) */}
-      <div className="glass-panel" style={{ 
-        flex: 1, 
-        width: '100%', /* STRETCH FULL WIDTH */
-        padding: '10px', 
-        marginLeft: '-10px', // Moved closer to the sidebar by 10px
-        overflowY: 'auto', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: '10px' 
-      }}>
-        
-        {/* Sub-Card: Sales History (Stretched) */}
-        <div style={{ 
-          width: '100%', /* STRETCH */
-          padding: '20px', 
-          background: 'rgba(255,255,255,0.05)', 
-          borderRadius: '16px', 
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          <h2 style={{marginTop:0, marginBottom:'15px'}}>Recent Sales History</h2>
-          <div style={{overflowX: 'auto'}}>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
-                  <th style={{padding:'10px'}}>Invoice ID</th>
-                  <th>Date</th>
-                  <th>Total Amount</th>
-                  <th>Revenue</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentSales.map(sale => (
-                  <tr key={sale.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <td style={{padding:'10px', fontFamily:'monospace'}}>{sale.invoice_id}</td>
-                    <td>{new Date(sale.sale_time).toLocaleString()}</td>
-                    <td>{formatCurrency(sale.total_amount)}</td>
-                    <td style={{color: '#4ade80', fontWeight: 'bold'}}>{formatCurrency(sale.total_revenue)}</td>
-                    <td>
-                      <button className="glass-btn" style={{padding:'5px 10px', fontSize:'12px'}} onClick={() => handleViewReceipt(sale)}>
-                        View Receipt
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {recentSales.length === 0 && (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', padding: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                      No recent sales to display.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      <div className="glass-panel" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', flexShrink: 0 }}>
+          <div className="glass-panel" style={{padding:'15px', background:'var(--success-bg)', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+            <h3 style={{margin:'0 0 10px 0', opacity:0.8, color: textColor, fontSize: '14px'}}>Total Sales ({period})</h3>
+            <p style={{fontSize:'28px', fontWeight:'bold', margin:0, color: textColor}}>{formatCurrency(stats.total_sales)}</p>
+          </div>
+          <div className="glass-panel" style={{padding:'15px', background:'var(--info-bg)', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+            <h3 style={{margin:'0 0 10px 0', opacity:0.8, color: textColor, fontSize: '14px'}}>Total Orders</h3>
+            <p style={{fontSize:'28px', fontWeight:'bold', margin:0, color: textColor}}>{stats.total_orders}</p>
+          </div>
+          <div className="glass-panel" style={{padding:'15px', background:'var(--warning-bg)', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+            <h3 style={{margin:'0 0 10px 0', opacity:0.8, color: textColor, fontSize: '14px'}}>Best Seller</h3>
+            <p style={{fontSize:'18px', fontWeight:'bold', margin:0, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color: textColor}}>
+              {bestSeller ? bestSeller.name : 'No data'}
+            </p>
+            {bestSeller && <small style={{ color: labelColor }}>{bestSeller.total_sold} sold</small>}
           </div>
         </div>
 
-        {/* Sub-Card: Batches (Stretched) */}
-        <div style={{ 
-          width: '100%', /* STRETCH */
-          padding: '20px', 
-          background: 'rgba(255,255,255,0.05)', 
-          borderRadius: '16px', 
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          <h2 style={{marginTop:0, marginBottom:'15px'}}>Inventory History (Batches)</h2>
-          <div style={{overflowX: 'auto'}}>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
-                  <th style={{padding:'10px'}}>Batch ID</th>
-                  <th>Date Added</th>
-                  <th>Item Count</th>
-                  <th>Total Value</th>
-                  <th>Action</th>
+        {/* BATCH HISTORY TABLE */}
+        <div className="glass-panel" style={{ padding: '15px' }}>
+          <h3 style={{margin:'0 0 15px 0', color: textColor, fontSize: '18px'}}>Batch History</h3>
+          <table className="data-view-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <thead style={{position: 'sticky', top: 0, background: 'var(--table-header-bg)', zIndex: 10}}>
+              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <th style={{padding: '10px', color: labelColor}}>Date</th>
+                <th style={{padding: '10px', color: labelColor}}>Batch ID</th>
+                <th style={{padding: '10px', color: labelColor}}>Total Price</th>
+                <th style={{padding: '10px', color: labelColor}}>Total Cost</th>
+                <th style={{padding: '10px', color: labelColor}}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batches.length === 0 && <tr><td colSpan="5" style={{textAlign:'center', opacity:0.6, padding:'20px'}}>No batches found.</td></tr>}
+              {batches.map(b => (
+                <tr key={b.batch_id} style={{ borderBottom: '1px solid var(--table-border)' }}>
+                  <td style={{padding: '10px', color: textColor}}>{formatDate(b.date)}</td>
+                  <td style={{padding: '10px', fontFamily: 'monospace', color: textColor}}>{b.batch_id}</td>
+                  <td style={{padding: '10px', color: textColor}}>{formatCurrency(b.total_price)}</td>
+                  <td style={{padding: '10px', color: textColor}}>{formatCurrency(b.total_cost)}</td>
+                  <td style={{padding: '10px'}}>
+                    <button className="glass-btn" style={{padding:'4px 10px', fontSize:'12px'}} onClick={() => handleViewBatch(b.batch_id)}>View</button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {batches.map(batch => (
-                  <tr key={batch.inventory_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <td style={{padding:'10px', fontFamily:'monospace'}}>{batch.inventory_id}</td>
-                    <td>{new Date(batch.date_added).toLocaleString()}</td>
-                    <td>{batch.item_count}</td>
-                    <td>{formatCurrency(batch.total_value)}</td>
-                    <td>
-                      <button 
-                        className="glass-btn" 
-                        style={{padding:'5px 10px', fontSize:'12px'}} 
-                        onClick={() => handleViewBatch(batch)}
-                      >
-                        View Items
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
+        {/* TRANSACTION HISTORY TABLE */}
+        <div className="glass-panel" style={{ padding: '15px' }}>
+          <h3 style={{margin:'0 0 15px 0', color: textColor, fontSize: '18px'}}>Transaction History</h3>
+          <table className="data-view-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <thead style={{position: 'sticky', top: 0, background: 'var(--table-header-bg)', zIndex: 10}}>
+              <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <th style={{padding: '10px', color: labelColor}}>Date</th>
+                <th style={{padding: '10px', color: labelColor}}>Trans ID</th>
+                <th style={{padding: '10px', color: labelColor}}>Total</th>
+                <th style={{padding: '10px', color: labelColor}}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.length === 0 && <tr><td colSpan="4" style={{textAlign:'center', opacity:0.6, padding:'20px'}}>No transactions found.</td></tr>}
+              {transactions.map(s => (
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--table-border)' }}>
+                  <td style={{padding: '10px', color: textColor}}>{formatDateTime(s.sale_time)}</td>
+                  <td style={{padding: '10px', fontFamily: 'monospace', color: textColor}}>{s.transaction_id}</td>
+                  <td style={{padding: '10px', color: textColor}}>{formatCurrency(s.total_amount)}</td>
+                  <td style={{padding: '10px'}}>
+                    <button className="glass-btn" style={{padding:'4px 10px', fontSize:'12px'}} onClick={() => handleViewTransaction(s)}>View / Reprint</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* MODALS */}
-      {selectedBatch && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-        }}>
-          <div className="glass-panel" style={{ padding: '20px', width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{marginTop:0}}>Batch Details: {selectedBatch.inventory_id}</h3>
-            <p style={{fontSize:'12px', opacity:0.7}}>{new Date(selectedBatch.date_added).toLocaleString()}</p>
-            
-            <div style={{overflowY: 'auto', margin: '20px 0', border: '1px solid rgba(255,255,255,0.2)'}}>
-              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'rgba(255,255,255,0.1)' }}>
-                    <th style={{padding:'8px'}}>Name</th>
-                    <th style={{padding:'8px'}}>Barcode</th>
-                    <th style={{padding:'8px'}}>Price</th>
-                    <th style={{padding:'8px'}}>Qty</th>
-                    <th style={{padding:'8px'}}>Value</th>
+      {/* --- BATCH ITEMS MODAL --- */}
+      {showBatchModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--modal-overlay)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div className="glass-panel" style={{ padding: '30px', width: '800px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{marginTop:0, marginBottom:0, color: textColor, fontSize: '20px'}}>Items in Batch: <span style={{fontFamily: 'monospace'}}>{selectedBatchId}</span></h3>
+              <button className="glass-btn" onClick={() => setShowBatchModal(false)} style={{color: buttonTextColor}}>✕ Close</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table className="data-view-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--table-header-bg)', zIndex: 10 }}>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <th style={{padding: '10px', color: textColor}}>Product Name</th>
+                    <th style={{padding: '10px', color: textColor}}>Barcode</th>
+                    <th style={{padding: '10px', color: textColor}}>Cost</th>
+                    <th style={{padding: '10px', color: textColor}}>Price</th>
+                    <th style={{padding: '10px', color: textColor}}>Qty Received</th>
                   </tr>
                 </thead>
                 <tbody>
                   {batchItems.map(item => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      <td style={{padding:'8px'}}>{item.name}</td>
-                      <td style={{padding:'8px'}}>{item.barcode}</td>
-                      <td style={{padding:'8px'}}>{formatCurrency(item.price)}</td>
-                      <td style={{padding:'8px'}}>{item.quantity}</td>
-                      <td style={{padding:'8px'}}>{formatCurrency(item.price * item.quantity)}</td>
+                    <tr key={item.id} style={{ borderBottom: '1px solid var(--table-border)' }}>
+                      <td style={{padding: '10px', color: textColor}}>{item.name}</td>
+                      <td style={{padding: '10px', fontFamily: 'monospace', color: textColor}}>{item.barcode}</td>
+                      <td style={{padding: '10px', color: textColor}}>{formatCurrency(item.cost)}</td>
+                      <td style={{padding: '10px', color: textColor}}>{formatCurrency(item.price)}</td>
+                      <td style={{padding: '10px', color: textColor}}>{item.quantity}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
-            <button 
-              className="glass-btn" 
-              style={{alignSelf: 'flex-end', background: 'rgba(255,0,0,0.2)', borderColor:'rgba(255,0,0,0.4)'}}
-              onClick={() => { setSelectedBatch(null); setBatchItems([]); }}
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
 
-      {showStockModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-        }}>
-          <div className="glass-panel" style={{ padding: '20px', width: '700px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{marginTop:0, color: '#fca5a5'}}>Restock Report</h3>
-            
-            <div style={{overflowY: 'auto', margin: '20px 0' }}>
-              
-              {outOfStock.length > 0 && (
-                <div style={{marginBottom:'20px'}}>
-                  <h4 style={{color:'#ef4444', margin:'0 0 10px 0'}}>CRITICAL: Out of Stock</h4>
-                  <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', background: 'rgba(239, 68, 68, 0.1)' }}>
-                    <thead>
-                      <tr>
-                        <th style={{padding:'8px'}}>Item Name</th>
-                        <th style={{padding:'8px', textAlign:'center'}}>Current Qty</th>
-                        <th style={{padding:'8px', textAlign:'center'}}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {outOfStock.map(item => (
-                        <tr key={item.name} style={{borderBottom: '1px solid rgba(239,68,68,0.2)'}}>
-                          <td style={{padding:'8px'}}>{item.name}</td>
-                          <td style={{padding:'8px', textAlign:'center', fontWeight:'bold', color:'#ef4444'}}>{item.quantity}</td>
-                          <td style={{padding:'8px', textAlign:'center', color:'#ef4444'}}>EMPTY</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {lowStock.length > 0 && (
-                <div style={{marginBottom:'20px'}}>
-                  <h4 style={{color:'#fbbf24', margin:'0 0 10px 0'}}>WARNING: Low Stock</h4>
-                  <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', background: 'rgba(251, 191, 36, 0.1)' }}>
-                    <thead>
-                      <tr>
-                        <th style={{padding:'8px'}}>Item Name</th>
-                        <th style={{padding:'8px', textAlign:'center'}}>Current Qty</th>
-                        <th style={{padding:'8px', textAlign:'center'}}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lowStock.map(item => (
-                        <tr key={item.name} style={{borderBottom: '1px solid rgba(251,191,36,0.2)'}}>
-                          <td style={{padding:'8px'}}>{item.name}</td>
-                          <td style={{padding:'8px', textAlign:'center', fontWeight:'bold', color:'#fbbf24'}}>{item.quantity}</td>
-                          <td style={{padding:'8px', textAlign:'center', color:'#fbbf24'}}>LOW</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {(outOfStock.length === 0 && lowStock.length === 0) && (
-                <div style={{textAlign:'center', padding:'40px', color:'#4ade80'}}>
-                  <h3>All Systems Green!</h3>
-                  <p>No items require restocking at this time.</p>
-                </div>
-              )}
-
+      {/* --- LOW STOCK DETAIL MODAL --- */}
+      {showLowStockModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--modal-overlay)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
+          <div className="glass-panel" style={{ padding: '30px', width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--warning)', paddingBottom: '15px' }}>
+              <h3 style={{marginTop:0, marginBottom:0, color: 'var(--warning)'}}>⚠️ Items Requiring Restock</h3>
+              <button className="glass-btn" onClick={() => setShowLowStockModal(false)} style={{color: buttonTextColor}}>✕ Close</button>
             </div>
-
-            <button 
-              className="glass-btn" 
-              style={{alignSelf: 'flex-end', background: 'rgba(255,255,255,0.2)', borderColor:'rgba(255,255,255,0.4)'}}
-              onClick={() => setShowStockModal(false)}
-            >
-              Close Report
-            </button>
-          </div>
-        </div>
-      )}
-
-      {selectedSale && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-        }}>
-          <div style={{ 
-            width: '380px', 
-            maxHeight: '90vh', 
-            display: 'flex', 
-            flexDirection: 'column',
-            boxShadow: '0 0 20px rgba(0,0,0,0.5)'
-          }}>
-            <div className="receipt-printable" style={{
-              background: 'white', 
-              color: 'black', 
-              padding: '20px', 
-              fontFamily: 'monospace',
-              flex: 1, 
-              overflowY: 'auto',
-              borderBottom: '1px solid #ddd'
-            }}>
-              <h3 style={{textAlign: 'center', margin: '0 0 10px 0', textTransform: 'uppercase'}}>Minimart Store</h3>
-              <div style={{fontSize: '12px', marginBottom: '10px', textAlign: 'center', color: '#555'}}>
-                123 Tech Street, Accra<br/>
-                Tel: 020 000 0000
-              </div>
-              
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-              
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px'}}>
-                <span>Inv ID:</span>
-                <span>{selectedSale.invoice_id}</span>
-              </div>
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '15px'}}>
-                <span>Date:</span>
-                <span>{new Date(selectedSale.sale_time).toLocaleString()}</span>
-              </div>
-
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-
-              <table style={{width: '100%', fontSize: '13px', borderCollapse: 'collapse', marginBottom: '10px'}}>
-                <thead>
-                  <tr>
-                    <th style={{textAlign: 'left'}}>Item</th>
-                    <th style={{textAlign: 'center'}}>Qty</th>
-                    <th style={{textAlign: 'right'}}>Revenue</th>
-                    <th style={{textAlign: 'right'}}>Total</th>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {lowStock.length === 0 && <div style={{textAlign:'center', opacity:0.6, color: textColor}}>No low stock items found.</div>}
+              <table className="data-view-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--table-header-bg)', zIndex: 10 }}>
+                  <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                    <th style={{padding: '10px', color: textColor}}>Product Name</th>
+                    <th style={{padding: '10px', color: textColor}}>Current Quantity</th>
+                    <th style={{padding: '10px', color: textColor}}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {saleItems.map((item, idx) => (
-                    <tr key={idx}>
-                      <td style={{padding: '2px 0'}}>
-                        {item.name}
-                        {bestSeller && item.name === bestSeller.name && (
-                          <span style={{
-                            marginLeft: '5px', 
-                            fontSize: '9px', 
-                            background: '#4ade80', 
-                            color: 'black', 
-                            padding: '1px 4px', 
-                            borderRadius: '3px',
-                            fontWeight: 'bold'
-                          }}>
-                            BEST SELLER
-                          </span>
-                        )}
-                      </td>
-                      <td style={{textAlign: 'center'}}>{item.qty}</td>
-                      <td style={{textAlign: 'right'}}>
-                        {formatCurrency((item.price_at_sale - item.cost) * item.qty)}
-                      </td>
-                      <td style={{textAlign: 'right'}}>{formatCurrency(item.price_at_sale * item.qty)}</td>
+                  {lowStock.map(p => (
+                    <tr key={p.name} style={{ borderBottom: '1px solid var(--table-border)' }}>
+                      <td style={{padding: '10px', color: textColor}}>{p.name}</td>
+                      <td style={{padding: '10px', color: 'var(--warning)', fontFamily:'monospace'}}>{p.quantity}</td>
+                      <td style={{padding: '10px', color: 'var(--danger)', fontWeight:'bold'}}>LOW</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold'}}>
-                <span>TOTAL</span>
-                <span>{formatCurrency(selectedSale.total_amount)}</span>
-              </div>
-              
-              <div style={{marginTop: '20px', fontSize: '11px', textAlign: 'center', color: '#555'}}>
-                Thank you for shopping with us!<br/>
-                No Refund / No Exchange after 24hrs.
-              </div>
-            </div>
-
-            <div className="payment-actions" style={{ background: '#f3f4f6', padding: '15px', display: 'flex', gap: '10px' }}>
-              <button 
-                onClick={handleReprint}
-                style={{ 
-                  background: '#3b82f6', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', 
-                  fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', flex: 1
-                }}
-              >
-                🖨️ Reprint
-              </button>
-              <button 
-                onClick={() => { setSelectedSale(null); setSaleItems([]); }}
-                style={{ 
-                  background: '#ef4444', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', 
-                  cursor: 'pointer', fontSize: '14px', flex: 1
-                }}
-              >
-                ✖ Close
-              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* --- TRANSACTION DETAIL / REPRINT MODAL --- */}
+      {viewTransaction && (
+        <div className="receipt-printable" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'var(--modal-overlay)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', color: 'black', width: '320px', padding: '20px', boxShadow: '0 0 20px rgba(0,0,0,0.5)', fontFamily: 'monospace' }}>
+            <div style={{textAlign:'center', marginBottom:'15px', borderBottom:'1px dashed #000', paddingBottom:'10px'}}>
+              <h2 style={{margin:0, fontSize:'18px', textTransform:'uppercase'}}>{companyDetails.name}</h2>
+              <p style={{margin:'2px 0', fontSize:'12px'}}>{companyDetails.address}</p>
+              <p style={{margin:'2px 0', fontSize:'12px'}}>{companyDetails.location}</p>
+              <p style={{margin:'2px 0', fontSize:'12px'}}>{companyDetails.phone}</p>
+            </div>
+            <div style={{marginBottom:'10px', fontSize:'12px'}}>
+              <p style={{margin:'2px 0'}}><strong>Date:</strong> {formatDate(viewTransaction.sale_time)} {formatTime(viewTransaction.sale_time)}</p>
+              <p style={{margin:'2px 0'}}><strong>Trans ID:</strong> {viewTransaction.transaction_id}</p>
+              <p style={{margin:'2px 0'}}><strong>Method:</strong> CASH (REPRINT)</p>
+            </div>
+            <div style={{marginBottom:'15px', borderBottom:'1px dashed #000', paddingBottom:'15px'}}>
+              {viewItems.map(item => (
+                <div key={item.id} style={{display: 'flex', justifyContent:'space-between', marginBottom:'5px'}}>
+                  <span>{item.name} x{item.qty}</span>
+                  <span>{formatCurrency(item.price_at_sale * item.qty).replace('GHS ', '')}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{borderTop:'1px dashed #000', paddingTop:'10px', display:'flex', justifyContent:'space-between', fontSize:'18px', fontWeight:'bold', marginBottom:'20px'}}>
+              <span>TOTAL</span>
+              <span>{formatCurrency(viewTransaction.total_amount).replace('GHS ', '')}</span>
+            </div>
+            <div style={{textAlign:'center', marginTop:'10px', fontSize:'14px'}}>
+              <p style={{margin:0, fontStyle:'italic'}}>{companyDetails.footer}</p>
+            </div>
+            <div className="payment-actions" style={{marginTop:'30px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
+              <button onClick={handlePrint} style={{padding:'10px', fontSize:'16px', cursor:'pointer'}}>Print Receipt</button>
+              <button onClick={closeViewModal} style={{padding:'10px', fontSize:'16px', cursor:'pointer', background:'#eee', border:'none', borderRadius:'4px'}}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

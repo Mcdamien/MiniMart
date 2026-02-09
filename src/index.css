@@ -1,79 +1,457 @@
-body {
-  margin: 0;
-  background: linear-gradient(135deg, #1cb5e0 0%, #000851 100%);
-  min-height: 100vh;
-  color: white;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  overflow: hidden;
+/* --- GLOBAL & RESET --- */
+:root {
+  --bg-color: #111;
+  --text-color: #ffffff;
+  --glass-bg: rgba(31, 41, 55, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-input-bg: rgba(0, 0, 0, 0.2);
+  --glass-btn-bg: rgba(255, 255, 255, 0.05);
+  --glass-btn-hover-bg: rgba(255, 255, 255, 0.15);
+  --option-bg: #1f2937;
+  --table-header-bg: rgba(0, 0, 0, 0.3);
+  --table-border: rgba(255, 255, 255, 0.1);
+  --modal-overlay: rgba(0, 0, 0, 0.85);
+  --text-danger: #ffcccc;
+  --text-success: #4ade80;
+  --text-info: #93c5fd;
+  --icon-muted: rgba(255, 255, 255, 0.3);
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --info-bg: rgba(59, 130, 246, 0.15);
+  --accounting-bg: white;
+  --accounting-text: #1f2937;
+  --accounting-border: #e2e8f0;
+  --accounting-input-bg: #ffffff;
+  --accounting-header-border: #e5e7eb;
+  --accounting-metric-bg: white;
+  --accounting-card-hover-border: #3b82f6;
+
+  color: var(--text-color);
+  background-color: var(--bg-color);
 }
 
-/* The Glass Utility Class */
+.light-theme {
+  --bg-color: #f3f4f6;
+  --text-color: #000000;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.3);
+  --glass-input-bg: rgba(255, 255, 255, 0.9);
+  --glass-btn-bg: rgba(0, 0, 0, 0.08);
+  --glass-btn-hover-bg: rgba(0, 0, 0, 0.15);
+  --option-bg: #ffffff;
+  --table-header-bg: rgba(0, 0, 0, 0.1);
+  --table-border: rgba(0, 0, 0, 0.2);
+  --modal-overlay: rgba(255, 255, 255, 0.9);
+  --text-danger: #991b1b;
+  --text-success: #065f46;
+  --text-info: #1e3a8a;
+  --icon-muted: rgba(0, 0, 0, 0.2);
+  --success: #059669;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --info: #2563eb;
+  --success-bg: rgba(5, 150, 105, 0.15);
+  --danger-bg: rgba(220, 38, 38, 0.15);
+  --warning-bg: rgba(217, 119, 6, 0.15);
+  --info-bg: rgba(37, 99, 235, 0.15);
+  --accounting-bg: #ffffff;
+  --accounting-text: #000000;
+  --accounting-border: #000000;
+  --accounting-input-bg: #f9fafb;
+  --accounting-header-border: #000000;
+  --accounting-metric-bg: #ffffff;
+  --accounting-card-hover-border: #000000;
+}
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+  overflow: hidden; /* Prevents double scrollbars */
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+/* --- GLASSMORPHISM & UTILITIES --- */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  border-radius: 16px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  border: 1px solid var(--glass-border);
 }
 
 .glass-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  padding: 10px;
-  border-radius: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  margin-bottom: 5px;
+  color: var(--text-color) !important;
+  background: var(--glass-input-bg);
+  border: 1px solid var(--glass-border);
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-size: 16px;
+  outline: none;
+  transition: 0.2s;
 }
-.glass-input::placeholder { color: rgba(255,255,255,0.5); }
+
+.glass-input:focus {
+  background: var(--glass-input-bg);
+  border-color: rgba(74, 222, 128, 0.5);
+  filter: brightness(0.9);
+}
 
 .glass-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
+  background: var(--glass-btn-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-color);
+  padding: 8px 16px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: bold;
+  transition: background 0.2s;
+  font-weight: 500;
 }
-.glass-btn:hover { background: rgba(255, 255, 255, 0.4); }
 
-/* Scrollbar styling for the inner glass panels */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
+.glass-btn:hover {
+  background: var(--glass-btn-hover-bg);
+}
 
-/* PRINT STYLES */
+.active-tab {
+  background: var(--glass-btn-hover-bg) !important;
+  border-color: var(--info) !important;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+/* --- FIX FOR DROPDOWN VISIBILITY (Dark Mode) --- */
+option {
+  background-color: var(--option-bg);
+  color: var(--text-color);
+  font-weight: bold;
+  font-size: 18px;
+  padding: 10px;
+}
+
+option:hover {
+  background-color: rgba(59, 130, 246, 0.8); /* Bright blue highlight */
+}
+
+/* --- TOAST NOTIFICATION --- */
+#toast {
+  visibility: hidden;
+  min-width: 250px;
+  background-color: var(--success);
+  color: #fff;
+  text-align: center;
+  border-radius: 8px;
+  padding: 16px;
+  position: fixed;
+  z-index: 10000;
+  right: 30px;
+  bottom: 30px;
+  font-size: 16px;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s, transform 0.3s, visibility 0.3s;
+}
+
+#toast.show {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.data-view-table th,
+.data-view-table td {
+  font-size: 20px;
+  font-weight: bold;
+  padding: 15px !important;
+}
+
+.data-view-table th {
+  color: var(--text-color);
+  background: var(--table-header-bg);
+}
+
+.data-view-table td {
+  color: var(--text-color);
+}
+
+/* --- SETTINGS SWITCH (CSS Toggle) --- */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #4ade80;
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+/* --- RECEIPT PRINTING FIX --- */
+.receipt-printable {
+  display: none; /* IMPORTANT: Hidden on screen by default */
+  background: white;
+  color: black;
+  font-family: monospace;
+  position: fixed; /* Ensures it overlays the app when printing */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  padding: 20px;
+}
+
 @media print {
-  /* Hide everything in the body */
-  body * {
-    visibility: hidden;
-  }
-  
-  /* Only show the receipt container */
-  .receipt-printable, .receipt-printable * {
-    visibility: visible;
-  }
-  
-  /* Position the receipt on the top left */
+  /* ONLY show the receipt when printing */
   .receipt-printable {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    background: white !important;
-    color: black !important;
-    box-shadow: none !important;
-    border: none !important;
-    padding: 20px !important;
-    margin: 0 !important;
+    display: block; 
+    position: static; /* Fixes layout during print */
+    background: white;
+    color: black;
+    z-index: 10000;
   }
+  
+  /* Hide everything else during print (Optional but recommended) */
+  body > *:not(.receipt-printable):not(.glass-panel):not(.glass-btn) {
+    display: none;
+  }
+  
+  /* Force background colors */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
 
-  /* Hide the payment buttons so they don't print */
-  .payment-actions {
-    display: none !important;
-  }
+/* =========================================
+   ACCOUNTING MODULE STYLES (MERGED)
+   ========================================= */
+
+/* 1. ACCOUNTING FORMS & INPUTS */
+.accounting-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 30px;
+  background: var(--accounting-bg);
+  color: var(--accounting-text);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--accounting-border);
+}
+
+.accounting-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--accounting-text);
+  opacity: 0.8;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.accounting-form input, 
+.accounting-form select, 
+.accounting-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--accounting-border);
+  border-radius: 6px;
+  font-size: 1rem;
+  background: var(--accounting-input-bg);
+  color: var(--accounting-text);
+  transition: border-color 0.2s;
+}
+
+.accounting-form input:focus, 
+.accounting-form select:focus, 
+.accounting-form textarea:focus {
+  outline: none;
+  border-color: #3b82f6; /* Blue focus ring */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.accounting-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--accounting-header-border);
+}
+
+.accounting-header h2 {
+  margin: 0;
+  color: var(--accounting-text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* 2. ACCOUNTING REPORTS GRID (MiniMart Reports) */
+.reports-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 2 columns of equal width */
+  gap: 15px;
+}
+
+.accounting-report-card {
+  background: var(--accounting-bg);
+  border: 1px solid var(--accounting-header-border);
+  padding: 20px;
+  border-radius: 8px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.2s;
+  color: var(--accounting-text);
+}
+
+.accounting-report-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accounting-card-hover-border);
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.accounting-report-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accounting-text);
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+.accounting-report-desc {
+  font-size: 0.9rem;
+  color: var(--accounting-text);
+  opacity: 0.7;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+.accounting-action-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  background: #3b82f6; 
+  color: white;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* 3. ACCOUNTING METRICS (Overview Cards) */
+.accounting-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3 cards wide */
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.accounting-metric-card {
+  background: var(--accounting-metric-bg);
+  border: 1px solid var(--accounting-header-border);
+  padding: 25px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+  color: var(--accounting-text);
+}
+
+.accounting-metric-card h3 {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: var(--accounting-text);
+  opacity: 0.7;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.accounting-metric-amount {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Color Themes for Metrics */
+.accounting-metric.income .accounting-metric-amount {
+  color: #10b981; /* Green for Profit */
+}
+
+.accounting-metric.expense .accounting-metric-amount {
+  color: #ef4444; /* Red for Expenses */
+}
+
+.accounting-metric.loss .accounting-metric-amount {
+  color: #f87171; /* Orange for Losses */
+}
+
+/* 4. ACCOUNTING TABLES (Reports) */
+.accounting-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--accounting-header-border);
+  background: var(--accounting-bg);
+  color: var(--accounting-text);
+  font-size: 0.9rem; /* Slightly smaller text than POS tables */
+}
+
+.accounting-data-table th {
+  background-color: var(--table-header-bg);
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  color: var(--accounting-text);
+  border-bottom: 2px solid var(--accounting-header-border);
+}
+
+.accounting-data-table td {
+  padding: 15px;
+  border-bottom: 1px solid var(--accounting-header-border);
+}
+
+.accounting-data-table tr:last-child td {
+  border-bottom: none; /* Remove bottom border from last row */
 }

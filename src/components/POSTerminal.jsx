@@ -1,324 +1,579 @@
-import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../utils'; 
+import { useState, useEffect, useRef } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faTimes } from '@fortawesome/free-solid-svg-icons';
+import { formatCurrency, formatDate, formatTime } from '../utils';
 
-export default function POSTerminal() {
+export default function POSTerminal({ showToast }) {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [processedSale, setProcessedSale] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');  
+  const [currentSale, setCurrentSale] = useState(null);
+  const [showCheckoutPreview, setShowCheckoutPreview] = useState(false);
+  const inputRefs = useRef({});
+  const lastFocusedId = useRef(null);
+  const inputRef = useRef(null);
 
-  useEffect(() => {
+  // State for Company Details & Tax Config
+  const [companyDetails, setCompanyDetails] = useState({});
+  const [taxConfig, setTaxConfig] = useState({ enabled: false, rate: 0 });
+
+  // Helper: FETCH PRODUCTS
+  const fetchProducts = () => {
     fetch('http://localhost:5000/api/products')
       .then(res => res.json())
-      .then(data => setProducts(data));
+      .then(data => setProducts(data))
+      .catch(err => console.error('Failed to fetch products', err));
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    if(inputRef.current) inputRef.current.focus();
+    const savedSettings = localStorage.getItem('minimart_settings');
+    if (savedSettings) {
+      const parsed = JSON.parse(savedSettings);
+      setCompanyDetails(parsed);
+      if (parsed.taxConfig) {
+        setTaxConfig(parsed.taxConfig);
+      }
+    }
   }, []);
 
-  const filteredProducts = products.filter(product => {
-    const term = searchTerm.toLowerCase();
-    const nameMatch = product.name.toLowerCase().includes(term);
-    const barcodeMatch = String(product.barcode).toLowerCase().includes(term);
-    return nameMatch || barcodeMatch;
-  });
-
+  // Helper: ADD TO CART
   const addToCart = (product) => {
-    const existing = cart.find(item => item.id === product.id);
-    if (existing) {
-      setCart(cart.map(item => item.id === product.id ? { ...existing, qty: existing.qty + 1 } : item));
-    } else {
-      setCart([...cart, { ...product, qty: 1 }]);
-    }
+    setCart(prev => {
+      const existing = prev.find(item => item.id === product.id);
+      if (existing) {
+        if (existing.qty < product.quantity) {
+          lastFocusedId.current = existing.id;
+          setTimeout(() => {
+            if (inputRefs.current[existing.id]) {
+              inputRefs.current[existing.id].select();
+              inputRefs.current[existing.id].focus();
+            }
+          }, 0);
+          return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+        } else {
+          showToast("Not enough stock!");
+          return prev;
+        }
+      }
+      lastFocusedId.current = product.id;
+      setTimeout(() => {
+        if (inputRefs.current[product.id]) {
+          inputRefs.current[product.id].select();
+          inputRefs.current[product.id].focus();
+        }
+      }, 0);
+      return [...prev, { ...product, qty: 1 }];
+    });
+    setSearchTerm(''); 
+    if (inputRef.current) inputRef.current.focus();
   };
 
-  const handleCheckoutClick = () => {
-    if (cart.length === 0) {
-      alert("Your cart is empty!");
-      return;
-    }
-    setProcessedSale(null);
-    setShowPaymentModal(true);
+  const updateQty = (id, newQty) => {
+    if (newQty <= 0) return; 
+    setCart(prev => prev.map(item => {
+      if (item.id === id) {
+        return { ...item, qty: newQty };
+      }
+      return item;
+    }));
   };
 
-  const getTotal = () => {
-    return cart.reduce((a, b) => a + (b.price * b.qty), 0);
+  const changeQty = (id, delta) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === id) {
+        const newQty = Math.max(1, item.qty + delta);
+        return { ...item, qty: newQty };
+      }
+      return item;
+    }));
   };
 
-  const clearCart = () => {
-    if (window.confirm("Are you sure you want to clear the entire cart?")) {
-      setCart([]);
-    }
+  // Helper: TAX CALCULATIONS
+  const getSubtotal = () => cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
+  const getTaxAmount = () => {
+    if (!taxConfig.enabled) return 0;
+    const subtotal = getSubtotal();
+    return (subtotal * taxConfig.rate) / 100;
   };
 
-  const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearchTerm(val);
+  const getGrandTotal = () => getSubtotal() + getTaxAmount();
 
-    const exactMatch = products.find(p => p.barcode === val);
-    if (exactMatch) {
-      addToCart(exactMatch);
-      setSearchTerm(''); 
-    }
-  };
-
+  // Helper: PAYMENT
   const handlePayment = async (method) => {
+    if (cart.length === 0) return;
+    
+    const payload = cart.map(item => ({ id: item.id, qty: item.qty, price: item.price }));
+    const calculatedTax = getTaxAmount();
+    const calculatedGrandTotal = getGrandTotal();
+    
     try {
-      const response = await fetch('http://localhost:5000/api/checkout', {
+      const res = await fetch('http://localhost:5000/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart })
+        body: JSON.stringify({ items: payload, totalTax: calculatedTax })
       });
-      const data = await response.json();
-
-      console.log("Processed sale data:", data);
-      console.log("Cart state before clearing:", cart);
-      console.log("Payment modal visibility:", showPaymentModal);
-      console.log("Products state before update:", products);
-
+      
+      const data = await res.json();
+      
       if (data.success) {
-        setProcessedSale(data);
-
-        if (method === 'CASH') {
-          console.log("🔌 SIGNAL: Open Cash Drawer (Command Sent)");
-        }
-
-        try {
-          setTimeout(() => {
-            window.print();
-            console.log("🖨️ Print command executed successfully.");
-          }, 500);
-        } catch (printError) {
-          console.error("Error during print operation:", printError);
-          alert("An error occurred while printing.");
-        }
+        const saleData = {
+          transactionId: data.transactionId, 
+          total: calculatedGrandTotal, 
+          date: new Date(),
+          items: cart,
+          paymentMethod: method,
+          taxRate: taxConfig.rate,
+          taxAmount: calculatedTax
+        };
+        
+        setCurrentSale(saleData);
+        setCart([]);
+        fetchProducts(); 
+        setShowCheckoutPreview(false);
 
         setTimeout(() => {
-          setCart([]);
-          setShowPaymentModal(false);
-          setProcessedSale(null);
-
-          fetch('http://localhost:5000/api/products')
-            .then(res => {
-              if (!res.ok) {
-                throw new Error(`Failed to fetch products: ${res.statusText}`);
-              }
-              return res.json();
-            })
-            .then(data => setProducts(data))
-            .catch(fetchError => {
-              console.error("Error fetching updated products:", fetchError);
-              alert("Failed to update product list.");
-            });
-        }, 1000);
-
+            window.print();
+            setCurrentSale(null); 
+        }, 100);
+        
       } else {
-        alert("Sale failed: " + data.error);
+        showToast(`Transaction Failed: ${data.error}`);
       }
     } catch (err) {
       console.error(err);
-      alert("An error occurred during payment.");
+      showToast("Checkout failed. Check console.");
     }
   };
 
-  const closeModal = () => {
-    setShowPaymentModal(false);
+  const closeReceipt = () => {
+    setCurrentSale(null);
+    if(inputRef.current) inputRef.current.focus();
   };
+
+  // --- COMMON STYLES ---
+  const textMuted = { color: 'var(--text-color)', opacity: 0.5, fontSize: '13px' };
+  const textColor = 'var(--text-color)'; // Header & Primary Text
+  const buttonTextColor = 'var(--text-color)'; // Button Text
+  const inputColor = 'var(--text-color)';
+  const labelColor = 'var(--text-color)';
+  const headerStyle = { margin: 0, fontWeight: 'bold', fontSize: '20px', color: textColor };
 
   return (
     <div style={{ display: 'flex', gap: '20px', height: '100%' }}>
       
-      <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '20px', height: '100%' }}>
-        
-        <div className="glass-panel" style={{ 
-          padding: '15px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '15px', 
-          background: 'rgba(0,0,0,0.2)' 
-        }}>
-          <h2 style={{ margin: 0, fontSize: '24px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>PRODUCTS</h2>
-          <input 
-            type="text" 
-            className="glass-input" 
-            placeholder="Search by Name or Barcode..." 
-            value={searchTerm}
-            onChange={handleSearchChange} 
-            style={{ fontSize: '16px', padding: '12px', flex: 1, margin: 0 }}
-          />
-        </div>
-
-        <div className="glass-panel" style={{ flex: 1, padding: '15px', overflowY: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '15px' }}>
-            {filteredProducts.map(p => (
-              <div key={p.id} className="glass-panel" style={{ padding: '15px', cursor: 'pointer', textAlign: 'center' }} 
-                   onClick={() => addToCart(p)}>
-                <div style={{fontSize:'16px', fontWeight:'bold', marginBottom: '5px'}}>{p.name}</div>
-                <div style={{color:'#4ade80', fontSize: '18px', fontWeight: 'bold'}}>{formatCurrency(p.price)}</div>
-                <small style={{color: 'rgba(255,255,255,0.7)', display: 'block', marginTop: '5px'}}>
-                  Stock: {p.quantity}
-                </small>
-              </div>
-            ))}
-            {filteredProducts.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', opacity: 0.6 }}>
-                No products found matching "{searchTerm}"
-              </div>
-            )}
+      {/* LEFT SIDE: PRODUCT GRID */}
+      <div className="glass-panel" style={{ flex: 2, padding: '20px', display: 'flex', flexDirection: 'column' }}>
+        {/* Header & Search */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px', flexShrink: 0 }}>
+          <h2 style={headerStyle}>POS Terminal</h2>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input 
+              ref={inputRef}
+              className="glass-input" 
+              placeholder="Scan Barcode or Search Product..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ fontSize: '16px', paddingLeft: '15px', color: inputColor }}
+            />
           </div>
         </div>
 
-      </div>
+        {/* Grid */}
+       <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 160px)',
+          gridTemplateRows: 'repeat(5, 160px)',
+          gap: '15px',
+          paddingBottom: '10px',
+          paddingRight: '5px'
+        }}>
+          {products.filter(p => 
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            String(p.barcode || '').toLowerCase().includes(searchTerm.toLowerCase())
+          ).map(p => (
+            <div 
+              key={p.id} 
+              onClick={() => addToCart(p)}
+              className="glass-panel"
+              style={{ 
+                cursor: 'pointer', 
+                display: 'grid', 
+                gridTemplateRows: '2fr 1fr 1fr', 
+                justifyItems: 'center',
+                textAlign: 'center',
+                padding: '15px',
+                background: 'var(--glass-btn-bg)',
+                transition: 'all 0.2s',
+                border: '1px solid var(--glass-border)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--glass-btn-hover-bg)';
+                e.currentTarget.style.borderColor = 'var(--glass-border)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--glass-btn-bg)';
+                e.currentTarget.style.borderColor = 'var(--glass-border)';
+              }}
+            >
+              {/* Product Name */}
+              <div style={{ fontWeight: 'bold', fontSize: '18px', marginBottom: '8px', lineHeight: '1.2', color: buttonTextColor }}>
+                {p.name}
+              </div>
+              
+              {/* Price */}
+              <div style={{ color: 'var(--success)', fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>
+                {formatCurrency(p.price)}
+              </div>
 
-      <div className="glass-panel" style={{ flex: 1, padding: '15px', display: 'flex', flexDirection: 'column' }}>
-        <h2>Current Sale</h2>
-        <div style={{ flex: 1, overflowY: 'auto', margin: '10px 0' }}>
-          {cart.map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom:'5px' }}>
-              <span>{item.name} x{item.qty}</span>
-              <span>{formatCurrency(item.price * item.qty)}</span>
+              {/* Stock */}
+              <div style={{ fontSize: '13px', borderTop: '1px solid var(--glass-border)', paddingTop: '5px', width: '80%', color: labelColor }}>
+                Stock: {p.quantity}
+              </div>
             </div>
           ))}
         </div>
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.3)', paddingTop: '15px' }}>
-          <h3>Total: {formatCurrency(getTotal())}</h3>
-          
-          <button 
-            onClick={clearCart}
-            style={{
-              width: '100%',
-              marginTop: '10px',
-              backgroundColor: 'rgba(234, 179, 8, 0.3)',
-              border: '1px solid rgba(234, 179, 8, 0.6)',
-              color: '#fef08a',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              transition: 'all 0.3s ease'
-            }}
-            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(234, 179, 8, 0.5)'}
-            onMouseOut={(e) => e.target.style.backgroundColor = 'rgba(234, 179, 8, 0.3)'}
-          >
-            🗑️ Clear Cart
-          </button>
+      </div>
 
-          <button className="glass-btn" style={{ width: '100%', marginTop: '10px', backgroundColor: 'rgba(0,255,0,0.2)', borderColor:'rgba(0,255,0,0.4)' }} onClick={handleCheckoutClick}>
-            CHECKOUT (PREVIEW)
+      {/* RIGHT SIDE: CART */}
+      <div className="glass-panel" style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ 
+          borderBottom: '1px solid var(--glass-border)', 
+          paddingBottom: '15px', 
+          margin: '0 0 15px 0',
+          color: textColor,
+          fontSize: '18px',
+          fontWeight: 'bold'
+        }}>
+          Current Cart ({cart.length})
+        </h3>
+        
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {cart.length === 0 && (
+            <div style={{textAlign: 'center', opacity: 0.5, marginTop: '50px', fontSize: '14px', color: labelColor }}>
+              Cart is empty
+            </div>
+          )}
+          {cart.map(item => (
+            <div key={item.id} style={{
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              background: 'var(--glass-input-bg)', 
+              padding: '12px', 
+              borderRadius: '8px',
+              border: '1px solid var(--glass-border)'
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 'bold', fontSize: '15px', marginBottom: '4px', color: buttonTextColor }}>{item.name}</div>
+                <div style={{...textMuted}}>{formatCurrency(item.price)} x {item.qty}</div>
+              </div>
+              
+              {/* QUANTITY CONTROLS */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button 
+                  className="glass-btn" 
+                  style={{ padding: '5px 10px', fontSize: '16px', minWidth: '32px', color: buttonTextColor }} 
+                  onClick={() => changeQty(item.id, -1)}
+                >-</button>
+                
+                <input 
+                  type="number"
+                  ref={(el) => inputRefs.current[item.id] = el}
+                  value={item.qty}
+                  onChange={(e) => updateQty(item.id, parseInt(e.target.value) || 0)}
+                  style={{ 
+                    width: '50px', 
+                    textAlign: 'center', 
+                    background: 'var(--glass-input-bg)', 
+                    border: '1px solid var(--glass-border)', 
+                    color: textColor,
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    borderRadius: '4px',
+                    outline: 'none'
+                  }}
+                />
+
+                <button 
+                  className="glass-btn" 
+                  style={{ padding: '5px 10px', fontSize: '16px', minWidth: '32px', color: buttonTextColor }} 
+                  onClick={() => changeQty(item.id, 1)}
+                >+</button>
+                
+                <button 
+                  className="glass-btn" 
+                  style={{ 
+                    padding: '5px 10px', fontSize: '16px', 
+                    background: 'var(--danger-bg)', 
+                    borderColor: 'var(--danger)', 
+                    color: 'var(--danger)',
+                    minWidth: '32px'
+                  }} 
+                  onClick={() => setCart(cart.filter(c => c.id !== item.id))}
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* --- TAX SUMMARY --- */}
+        <div style={{ 
+          marginTop: 'auto', 
+          borderTop: '1px solid var(--glass-border)', 
+          paddingTop: '15px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '10px' 
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: textColor }}>
+            <span>Subtotal:</span>
+            <span>{formatCurrency(getSubtotal())}</span>
+          </div>
+
+          {taxConfig.enabled && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: 'var(--warning)' }}>
+              <span>Tax ({taxConfig.rate}%):</span>
+              <span>{formatCurrency(getTaxAmount())}</span>
+            </div>
+          )}
+
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            fontSize: '22px', 
+            fontWeight: 'bold', 
+            marginTop: '5px', 
+            color: 'var(--success)' 
+          }}>
+            <span>Total</span>
+            <span>{formatCurrency(getGrandTotal())}</span>
+          </div>
+
+          {!taxConfig.enabled && (
+             <div style={{ textAlign: 'center', opacity: 0.5, fontSize: '12px', marginTop: '5px', color: labelColor }}>
+               VAT/GST is disabled in Settings.
+             </div>
+          )}
+        </div>
+
+        {/* CHECKOUT BUTTONS */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
+          <button 
+            className="glass-btn" 
+            style={{ 
+              width: '100%', 
+              padding: '12px', 
+              fontSize: '16px', 
+              fontWeight: 'bold',
+              background: 'var(--danger-bg)', 
+              borderColor: 'var(--danger)',
+              color: 'var(--danger)'
+            }}
+            onClick={() => setCart([])}
+            disabled={cart.length === 0}
+          >
+            CLEAR CART
+          </button>
+          <button 
+            className="glass-btn" 
+            style={{ 
+              width: '100%', 
+              padding: '12px', 
+              fontSize: '16px', 
+              fontWeight: 'bold',
+              background: 'var(--success-bg)', 
+              borderColor: 'var(--success)',
+              color: 'var(--success)'
+            }}
+            onClick={() => setShowCheckoutPreview(true)}
+            disabled={cart.length === 0}
+          >
+            CHECKOUT
           </button>
         </div>
       </div>
 
-      {/* --- PAYMENT MODAL --- */}
-      {showPaymentModal && (
+      {/* CHECKOUT PREVIEW MODAL */}
+      {showCheckoutPreview && (
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+          background: 'var(--modal-overlay)', 
+          display: 'flex', justifyContent: 'center', alignItems: 'center', 
+          zIndex: 1000,
+          backdropFilter: 'blur(5px)'
         }}>
-          <div style={{ 
-            width: '380px', 
-            maxHeight: '90vh', 
+          <div className="glass-panel" style={{ 
+            padding: '30px', 
+            width: '450px', 
             display: 'flex', 
             flexDirection: 'column',
-            boxShadow: '0 0 20px rgba(0,0,0,0.5)'
+            boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
           }}>
+            <h2 style={{textAlign: 'center', margin: '0 0 20px 0', color: textColor, fontSize: '24px'}}>Payment</h2>
             
-            <div id="printable-receipt" className="receipt-printable" style={{
-              background: 'white', 
-              color: 'black', 
-              padding: '20px', 
-              fontFamily: 'monospace',
+            <div style={{
               flex: 1, 
-              overflowY: 'auto',
-              borderBottom: '1px solid #ddd'
+              overflowY: 'auto', 
+              marginBottom: '20px', 
+              maxHeight: '300px', 
+              borderBottom: '1px solid var(--glass-border)', 
+              paddingBottom: '15px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
             }}>
-              <h3 style={{textAlign: 'center', margin: '0 0 10px 0', textTransform: 'uppercase'}}>Minimart Store</h3>
-              <div style={{fontSize: '12px', marginBottom: '10px', textAlign: 'center', color: '#555'}}>
-                123 Tech Street, Accra<br/>
-                Tel: 020 000 0000
-              </div>
-              
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-              
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px'}}>
-                <span>Inv ID:</span>
-                <span>{processedSale ? processedSale.invoice_id : "PENDING..."}</span>
-              </div>
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '15px'}}>
-                <span>Date:</span>
-                <span>{processedSale ? new Date(processedSale.sale_time).toLocaleString() : new Date().toLocaleString()}</span>
-              </div>
+              {cart.map(item => (
+                <div key={item.id} style={{
+                  display: 'flex', justifyContent: 'space-between', 
+                  fontSize: '14px', color: textColor
+                }}>
+                  <span>{item.name} <span style={{opacity: 0.5}}>(x{item.qty})</span></span>
+                  <span>{formatCurrency(item.price * item.qty)}</span>
+                </div>
+              ))}
+            </div>
 
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-
-              <table style={{width: '100%', fontSize: '13px', borderCollapse: 'collapse', marginBottom: '10px'}}>
-                <thead>
-                  <tr>
-                    <th style={{textAlign: 'left'}}>Item</th>
-                    <th style={{textAlign: 'center'}}>Qty</th>
-                    <th style={{textAlign: 'right'}}>Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cart.map((item, idx) => (
-                    <tr key={idx}>
-                      <td style={{padding: '2px 0'}}>{item.name}</td>
-                      <td style={{textAlign: 'center'}}>{item.qty}</td>
-                      <td style={{textAlign: 'right'}}>{formatCurrency(item.price * item.qty)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <hr style={{borderTop: '1px dashed black', margin: '10px 0'}} />
-
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold'}}>
-                <span>TOTAL</span>
-                <span>{formatCurrency(getTotal())}</span>
+            {/* SUMMARY IN MODAL */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid var(--glass-border)', paddingTop: '15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: textColor }}>
+                <span>Subtotal</span>
+                <span>{formatCurrency(getSubtotal())}</span>
               </div>
-              
-              <div style={{marginTop: '20px', fontSize: '11px', textAlign: 'center', color: '#555'}}>
-                Thank you for shopping with us!<br/>
-                No Refund / No Exchange after 24hrs.
+              {taxConfig.enabled && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: 'var(--warning)' }}>
+                  <span>Tax ({taxConfig.rate}%)</span>
+                  <span>{formatCurrency(getTaxAmount())}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '20px', fontWeight: 'bold', marginTop: '5px', color: 'var(--success)' }}>
+                <span>Total</span>
+                <span>{formatCurrency(getGrandTotal())}</span>
               </div>
             </div>
 
-            {/* --- UPDATED BUTTONS --- */}
-            <div className="payment-buttons-container payment-actions" style={{ background: '#f3f4f6', padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              
-              {/* Row 1: Cash and MoMo Side-by-Side */}
-              <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
                 <button 
-                  onClick={() => handlePayment('CASH')}
+                  className="glass-btn" 
                   style={{ 
-                    background: '#22c55e', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', 
-                    fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', flex: 1
+                    flex: 1, padding: '15px', fontSize: '16px', fontWeight: 'bold', 
+                    background: 'var(--success-bg)', borderColor: 'var(--success)', color: 'var(--success)' 
                   }}
+                  onClick={() => handlePayment('Cash')}
                 >
-                  💵 Cash
+                  CASH
                 </button>
-                
                 <button 
-                  onClick={() => handlePayment('MOMO')}
+                  className="glass-btn" 
                   style={{ 
-                    background: '#3b82f6', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', 
-                    fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', flex: 1
+                    flex: 1, padding: '15px', fontSize: '16px', fontWeight: 'bold', 
+                    background: 'var(--warning-bg)', borderColor: 'var(--warning)', color: 'var(--warning)' 
                   }}
+                  onClick={() => handlePayment('MoMo/Card')}
                 >
-                   📱 MoMo
+                  MoMo / CARD
                 </button>
               </div>
-
-              {/* Row 2: Cancel Underneath */}
+              
               <button 
-                onClick={closeModal}
-                style={{ 
-                  background: '#ef4444', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', 
-                  cursor: 'pointer', fontSize: '14px', width: '100%'
-                }}
+                className="glass-btn" 
+                style={{ padding: '12px', fontSize: '14px', width: '100%', background: 'var(--glass-btn-bg)', color: textColor }}
+                onClick={() => setShowCheckoutPreview(false)}
               >
-                ✖ Cancel
+                CANCEL
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
+      {/* RECEIPT MODAL */}
+      {currentSale && (
+        <div className="receipt-printable" style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'var(--modal-overlay)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000
+        }}>
+          <div style={{
+            background: 'white', color: 'black', width: '340px', padding: '20px',
+            boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)', fontFamily: 'monospace', borderRadius: '4px'
+          }}>
+            {/* --- DYNAMIC HEADER --- */}
+            <div style={{textAlign: 'center', marginBottom: '15px', borderBottom: '1px dashed #000', paddingBottom: '10px'}}>
+              <h2 style={{margin: 0, fontSize: '18px', textTransform: 'uppercase', color: '#111827'}}>{companyDetails.name}</h2>
+              <p style={{margin: '2px 0', fontSize: '12px', color: '#111827'}}>{companyDetails.address}</p>
+              <p style={{margin: '2px 0', fontSize: '12px', color: '#111827'}}>{companyDetails.location}</p>
+              <p style={{margin: '2px 0', fontSize: '12px', color: '#111827'}}>{companyDetails.phone}</p>
+            </div>
+
+            {/* --- DETAILS --- */}
+            <div style={{marginBottom: '15px', fontSize: '13px', color: '#111827'}}>
+              <p style={{margin: '2px 0'}}><strong style={{color: '#111827'}}>Date:</strong> {formatDate(currentSale.date)} {formatTime(currentSale.date)}</p>
+              <p style={{margin:'2px 0'}}><strong style={{color: '#111827'}}>Trans ID:</strong> {currentSale.transactionId}</p>
+              <p style={{margin:'2px 0'}}><strong style={{color: '#111827'}}>Method:</strong> {currentSale.paymentMethod.toUpperCase()}</p>
+            </div>
+
+            {/* --- ITEMS --- */}
+            <div style={{marginBottom: '15px', borderBottom: '1px dashed #000', paddingBottom: '15px'}}>
+              {currentSale.items.map(item => (
+                <div key={item.id} style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: '#111827'}}>
+                  <span>{item.name} x{item.qty}</span>
+                  <span>{formatCurrency(item.price * item.qty).replace('GHS ', '')}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* --- SUMMARY SECTION (Tax Aware) --- */}
+            <div style={{borderTop: '1px dashed #000', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '20px'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#666'}}>
+                <span>Subtotal:</span>
+                <span>{formatCurrency(getSubtotal()).replace('GHS ', '')}</span>
+              </div>
+              
+              {taxConfig.enabled && (
+                <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#666'}}>
+                  <span>Tax ({taxConfig.rate}%):</span>
+                  <span>{formatCurrency(currentSale.taxAmount).replace('GHS ', '')}</span>
+                </div>
+              )}
+
+              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', marginTop: '5px', color: 'black'}}>
+                <span>TOTAL</span>
+                <span>{formatCurrency(currentSale.total).replace('GHS ', '')}</span>
+              </div>
+            </div>
+
+            {/* --- DYNAMIC FOOTER --- */}
+            <div style={{textAlign: 'center', marginTop: '10px', fontSize: '12px', fontStyle: 'italic', color: '#555'}}>
+              <p style={{margin: 0}}>{companyDetails.footer || 'Thank you for your business!'}</p>
+            </div>
+
+            {/* --- PRINT ACTIONS --- */}
+            <div className="payment-actions" style={{marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
+              <button 
+                onClick={() => window.print()} 
+                style={{
+                  padding: '12px', fontSize: '16px', cursor: 'pointer', 
+                  background: 'black', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold'
+                }}
+              >
+                PRINT RECEIPT
+              </button>
+              <button 
+                onClick={closeReceipt} 
+                style={{
+                  padding: '12px', fontSize: '16px', cursor: 'pointer', 
+                  background: '#e5e7eb', color: 'black', border: 'none', borderRadius: '4px', fontWeight: 'bold'
+                }}
+              >
+                CLOSE
+              </button>
+            </div>
           </div>
         </div>
       )}
